@@ -960,7 +960,7 @@
     else if(e.target.classList.contains("note-image-input")){
       var files = Array.prototype.slice.call(e.target.files || []);
       if(files.length === 0) return;
-      Promise.all(files.map(function(f){ return resizeImageFile(f, 900, 0.72); }))
+      Promise.all(files.map(function(f){ return resizeImageFile(f, 1440, 0.85); }))
         .then(function(dataUrls){
           row.noteImages = (row.noteImages || []).concat(dataUrls);
           renderTbody();
@@ -1312,10 +1312,14 @@
         var footerH = 40;
         var totalH = PAD + headerH + titleBlockH + chipsH + 12 + itemsTotalH + footerH + PAD;
 
+        var SCALE = 2;
         var canvas = document.createElement("canvas");
-        canvas.width = W;
-        canvas.height = totalH;
+        canvas.width = W * SCALE;
+        canvas.height = totalH * SCALE;
         var ctx = canvas.getContext("2d");
+        ctx.scale(SCALE, SCALE);
+        ctx.imageSmoothingEnabled = true;
+        if("imageSmoothingQuality" in ctx){ ctx.imageSmoothingQuality = "high"; }
 
         ctx.fillStyle = "#F7FAF9";
         ctx.fillRect(0, 0, W, totalH);
