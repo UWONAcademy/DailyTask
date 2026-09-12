@@ -148,6 +148,82 @@
     transition:background .15s;
   }
   .btn-primary:hover{background:var(--teal-dark);}
+  .btn-secondary{
+    padding:12px 18px;
+    border-radius:10px;
+    border:1.5px solid var(--teal);
+    background:#fff;
+    color:var(--teal-dark);
+    font-size:15px;
+    font-weight:600;
+    font-family:'Inter',sans-serif;
+    cursor:pointer;
+    transition:background .15s, border-color .15s;
+  }
+  .btn-secondary:hover{background:var(--teal-tint);}
+
+  /* ---------- Print report (mirrors the long-image layout) ---------- */
+  #print-report-root{ display:none; }
+  #print-report-root .pr-stripe{
+    height:6px;width:100%;margin-bottom:22px;
+    background:linear-gradient(90deg,#F2C94C 0%,#E8702A 26%,#2E6FB0 68%,#223A63 100%);
+  }
+  #print-report-root .pr-header{
+    display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;
+  }
+  #print-report-root .pr-brand{ display:flex;align-items:center;gap:10px; }
+  #print-report-root .pr-brand img{ height:36px;width:auto;display:block; }
+  #print-report-root .pr-brand-name{
+    font-family:'Baloo 2',sans-serif;font-weight:700;font-size:18px;color:var(--indigo);
+  }
+  #print-report-root .pr-title-block{
+    display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px;gap:10px;flex-wrap:wrap;
+  }
+  #print-report-root .pr-title{
+    font-family:'Baloo 2',sans-serif;font-size:27px;font-weight:700;color:var(--indigo);margin:0;
+  }
+  #print-report-root .pr-date{ font-size:13.5px;color:var(--muted); }
+  #print-report-root .pr-chips{ display:flex;flex-wrap:wrap;gap:10px;margin-bottom:24px; }
+  #print-report-root .pr-chip{
+    background:var(--teal-tint);color:var(--teal-dark);font-size:12.5px;font-weight:700;
+    padding:7px 14px;border-radius:999px;
+  }
+  #print-report-root .pr-list{ display:flex;flex-direction:column;gap:16px; }
+  #print-report-root .pr-item{
+    border:1px solid var(--line);border-radius:14px;padding:18px 20px;
+    page-break-inside:avoid;break-inside:avoid;
+  }
+  #print-report-root .pr-item-head{ display:flex;align-items:center;gap:12px;margin-bottom:10px; }
+  #print-report-root .pr-item-num{
+    width:26px;height:26px;border-radius:50%;flex-shrink:0;
+    background:var(--teal-tint);color:var(--teal-dark);
+    display:inline-flex;align-items:center;justify-content:center;
+    font-size:12px;font-weight:700;
+  }
+  #print-report-root .pr-item-title{ font-size:16px;font-weight:700;color:var(--ink);flex:1;min-width:0; }
+  #print-report-root .pr-badge{
+    font-size:11px;font-weight:700;padding:4px 12px;border-radius:999px;
+    white-space:nowrap;flex-shrink:0;
+  }
+  #print-report-root .pr-badge.done{ background:var(--teal-tint);color:var(--teal-dark); }
+  #print-report-root .pr-badge.pending{ background:#F0F0EC;color:var(--muted); }
+  #print-report-root .pr-item-meta{ font-size:12.5px;color:var(--muted);margin:0 0 6px 38px; }
+  #print-report-root .pr-item-note{ font-size:12.5px;color:var(--muted);margin:0 0 10px 38px;line-height:1.6; }
+  #print-report-root .pr-item-images{ margin-left:38px;display:flex;flex-direction:column;gap:12px; }
+  #print-report-root .pr-item-images img{
+    width:100%;max-width:640px;height:auto;display:block;
+    border-radius:12px;border:1px solid var(--line);
+  }
+  #print-report-root .pr-footer{ text-align:center;font-size:12px;color:var(--muted);margin-top:26px; }
+
+  @media print{
+    @page{ margin:14mm; }
+    body *{ visibility:hidden; }
+    #print-report-root, #print-report-root *{ visibility:visible; }
+    #print-report-root{
+      display:block;position:absolute;left:0;top:0;width:100%;padding:0;
+    }
+  }
   .error-msg{
     color:var(--coral);
     font-size:13.5px;
@@ -619,11 +695,14 @@
     <div class="report-list" id="report-list"></div>
     <div style="margin-top:18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
       <button class="btn-primary" id="copy-report-btn" style="max-width:160px;">生成长图</button>
+      <button class="btn-secondary" id="print-report-btn">打印/保存为PDF</button>
       <span id="copy-indicator"></span>
     </div>
     <div id="report-image-wrap" style="margin-top:16px;"></div>
   </div>
 </section>
+
+<div id="print-report-root"></div>
 
 <script>
 (function(){
@@ -1465,6 +1544,54 @@
         return canvas.toDataURL("image/png");
       });
   }
+
+  function buildPrintReport(data, doneCount){
+    var logoSrc = document.querySelector(".brand img").src;
+    var html = "";
+    html += '<div class="pr-stripe"></div>';
+    html += '<div class="pr-header">' +
+      '<div class="pr-brand"><img src="'+logoSrc+'" alt="UWON Academy"><span class="pr-brand-name">督学系统</span></div>' +
+    '</div>';
+    html += '<div class="pr-title-block">' +
+      '<h1 class="pr-title">今日报告</h1>' +
+      '<span class="pr-date">'+escapeHtml(todayDisplay())+'</span>' +
+    '</div>';
+    html += '<div class="pr-chips">' +
+      '<span class="pr-chip">学生：'+escapeHtml(currentUser())+'</span>' +
+      '<span class="pr-chip">模块：'+escapeHtml(modeCfg().label)+'</span>' +
+      '<span class="pr-chip">已完成 '+doneCount+' 项任务</span>' +
+    '</div>';
+    html += '<div class="pr-list">';
+    data.forEach(function(r){
+      html += '<div class="pr-item">';
+      html += '<div class="pr-item-head">' +
+        '<span class="pr-item-num">'+r.num+'</span>' +
+        '<span class="pr-item-title">'+escapeHtml(r.desc)+'</span>' +
+        '<span class="pr-badge '+(r.done?'done':'pending')+'">'+(r.done?'已完成':'未完成')+'</span>' +
+      '</div>';
+      html += '<div class="pr-item-meta">'+r.minutes+' 分钟</div>';
+      if(r.note){
+        html += '<div class="pr-item-note">备注：'+escapeHtml(r.note)+'</div>';
+      }
+      if(r.noteImages && r.noteImages.length){
+        html += '<div class="pr-item-images">';
+        r.noteImages.forEach(function(src){
+          html += '<img src="'+src+'">';
+        });
+        html += '</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+    html += '<div class="pr-footer">UWON Academy · uwonacademy.github.io</div>';
+    return html;
+  }
+
+  document.getElementById("print-report-btn").addEventListener("click", function(){
+    document.getElementById("print-report-root").innerHTML =
+      buildPrintReport(currentReportData, currentReportDoneCount);
+    window.print();
+  });
 
   document.getElementById("copy-report-btn").addEventListener("click", function(){
     var ind = document.getElementById("copy-indicator");
