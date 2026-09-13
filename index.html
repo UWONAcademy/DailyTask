@@ -524,6 +524,56 @@
     align-items:center;
     justify-content:center;
   }
+  .task-files-list{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    margin-top:8px;
+  }
+  .task-file-item{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:6px 10px;
+    border:1px solid var(--line);
+    border-radius:8px;
+    background:var(--bg);
+  }
+  .task-file-item .file-icon{
+    font-size:15px;
+    flex-shrink:0;
+  }
+  .task-file-item .file-name{
+    flex:1;
+    min-width:0;
+    font-size:12.5px;
+    color:var(--ink);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .task-file-item .file-download{
+    font-size:12px;
+    font-weight:600;
+    color:var(--teal-dark);
+    text-decoration:none;
+    flex-shrink:0;
+  }
+  .task-file-item .file-download:hover{ text-decoration:underline; }
+  .task-file-item .remove-file-btn{
+    width:18px;height:18px;
+    border-radius:50%;
+    border:none;
+    background:var(--coral);
+    color:#fff;
+    font-size:12px;
+    line-height:1;
+    cursor:pointer;
+    flex-shrink:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
   .field-label{
     font-size:11.5px;
     font-weight:600;
@@ -638,6 +688,10 @@
         <p class="tile-title">语言学习每日任务计划</p>
         <p class="tile-sub">听力、词汇、写作、真题练习……一项项打卡，练完直接点进去开始。</p>
       </div>
+      <div class="tile" id="open-weekly-planner-tile">
+        <p class="tile-title">督学宝宝每周任务计划</p>
+        <p class="tile-sub">按周安排作业、复习和其他任务，每项任务都能设置精确到时间点的截止日期。</p>
+      </div>
     </div>
     <p class="more-hint">更多学习模块正在开发中</p>
   </div>
@@ -737,6 +791,17 @@
         "真题练习": { kind:"subselect", options: LANG_REALTEST_OPTIONS, placeholder:"请选择类型" },
         "写作": { kind:"subselect", options: LANG_WRITING_OPTIONS, placeholder:"请选择类型" }
       }
+    },
+    weekly: {
+      label: "督学宝宝每周任务计划",
+      pageTitle: "督学宝宝每周任务计划",
+      noFixedFirst: true,
+      hasDueDate: true,
+      options: ["作业","复习","其他"],
+      config: {
+        "作业": { kind:"subjectFree", subjectPlaceholder:"请输入学科名称", detailPlaceholder:"填写具体作业内容" },
+        "其他": { kind:"custom", placeholder:"输入具体任务" }
+      }
     }
   };
 
@@ -822,7 +887,7 @@
   function planKey(){ return "uwon_plan_" + currentMode + "_" + currentUser() + "_" + todayStr(); }
 
   function defaultRow(){
-    return { minutes:0, task:"", subOption:"", detailText:"", customText:"", remaining:0, running:false, done:false, note:"", noteImages:[] };
+    return { minutes:0, task:"", subOption:"", detailText:"", customText:"", subjectText:"", dueDate:"", taskFiles:[], remaining:0, running:false, done:false, note:"", noteImages:[] };
   }
 
   function freshPlan(){
@@ -846,6 +911,9 @@
       if(typeof r.subOption !== "string"){ r.subOption = ""; }
       if(typeof r.detailText !== "string"){ r.detailText = ""; }
       if(typeof r.customText !== "string"){ r.customText = ""; }
+      if(typeof r.subjectText !== "string"){ r.subjectText = ""; }
+      if(typeof r.dueDate !== "string"){ r.dueDate = ""; }
+      if(!r.taskFiles){ r.taskFiles = []; }
     });
     return rows;
   }
@@ -910,6 +978,39 @@
     return html;
   }
 
+  function fileIcon(name){
+    var ext = (name.split(".").pop() || "").toLowerCase();
+    if(ext === "pdf") return "📕";
+    if(ext === "doc" || ext === "docx") return "📘";
+    if(ext === "xls" || ext === "xlsx") return "📗";
+    if(ext === "ppt" || ext === "pptx") return "📙";
+    return "📄";
+  }
+
+  function taskFilesHtml(row){
+    if(!row.taskFiles || row.taskFiles.length === 0) return "";
+    var html = '<div class="task-files-list">';
+    row.taskFiles.forEach(function(f, fIdx){
+      html += '<div class="task-file-item">' +
+                '<span class="file-icon">'+fileIcon(f.name)+'</span>' +
+                '<span class="file-name" title="'+escapeHtml(f.name)+'">'+escapeHtml(f.name)+'</span>' +
+                '<a class="file-download" href="'+f.dataUrl+'" download="'+escapeHtml(f.name)+'">下载</a>' +
+                '<button type="button" class="remove-file-btn" data-file-idx="'+fIdx+'" title="删除文件">×</button>' +
+              '</div>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  function readFileAsDataUrl(file){
+    return new Promise(function(resolve, reject){
+      var reader = new FileReader();
+      reader.onload = function(e){ resolve({ name: file.name, dataUrl: e.target.result }); };
+      reader.onerror = function(){ reject(new Error("file read failed")); };
+      reader.readAsDataURL(file);
+    });
+  }
+
   function renderTbody(){
     var list = document.getElementById("plan-list");
     list.innerHTML = "";
@@ -919,13 +1020,16 @@
       card.dataset.idx = i;
 
       var taskField;
-      if(i === 0){
+      if(i === 0 && !modeCfg().noFixedFirst){
         taskField = '<div class="fixed-task">'+escapeHtml(modeCfg().firstFixed)+'</div>';
       } else {
         var cfg = modeCfg().config[row.task];
         taskField = '<select class="task-select">'+taskOptionsHtml(row)+'</select>';
         if(cfg && cfg.kind === "subject"){
           taskField += '<select class="sub-select" style="margin-top:8px;">'+subOptionsHtml(cfg.subjects, row.subOption, cfg.subjectPlaceholder)+'</select>'+
+            '<input class="note-input detail-text" type="text" placeholder="'+escapeHtml(cfg.detailPlaceholder||"填写具体内容")+'" style="margin-top:8px;" value="'+escapeHtml(row.detailText||"")+'">';
+        } else if(cfg && cfg.kind === "subjectFree"){
+          taskField += '<input class="note-input subject-text" type="text" placeholder="'+escapeHtml(cfg.subjectPlaceholder||"请输入学科名称")+'" style="margin-top:8px;" value="'+escapeHtml(row.subjectText||"")+'">'+
             '<input class="note-input detail-text" type="text" placeholder="'+escapeHtml(cfg.detailPlaceholder||"填写具体内容")+'" style="margin-top:8px;" value="'+escapeHtml(row.detailText||"")+'">';
         } else if(cfg && cfg.kind === "custom"){
           taskField += '<input class="note-input custom-text" type="text" placeholder="'+escapeHtml(cfg.placeholder||"输入具体任务")+'" style="margin-top:8px;" value="'+escapeHtml(row.customText||"")+'">';
@@ -935,11 +1039,21 @@
           taskField += '<a class="link-btn" href="'+cfg.url+'" target="_blank" rel="noopener noreferrer">Do it right now!</a>';
         }
       }
+      var dueDateField = "";
+      if(modeCfg().hasDueDate){
+        dueDateField = '<div class="field-group"><div class="field-label">截止时间</div>' +
+          '<input class="note-input due-date-input" type="datetime-local" value="'+escapeHtml(row.dueDate||"")+'"></div>';
+      }
 
       card.innerHTML =
         '<div class="row-head"><span class="row-num">'+(i+1)+'</span></div>'+
         '<div class="field-group"><div class="field-label">时长（分钟）</div><select class="min-select">'+minuteOptions(row.minutes)+'</select></div>'+
         '<div class="field-group"><div class="field-label">任务内容</div>'+taskField+'</div>'+
+        '<div class="field-group"><div class="field-label">任务附件</div>'+
+          taskFilesHtml(row) +
+          '<label class="upload-btn">上传文件<input type="file" multiple class="task-file-input" style="display:none;"></label>'+
+        '</div>'+
+        dueDateField+
         '<div class="field-group"><div class="field-label">倒计时</div><div class="timer-box">'+
           '<span class="timer-display'+(row.running?' running':'')+'">'+fmt(row.remaining)+'</span>'+
           '<button class="timer-btn start-pause-btn" title="开始/暂停">'+(row.running?'⏸':'▶')+'</button>'+
@@ -1011,6 +1125,7 @@
       row.subOption = "";
       row.detailText = "";
       row.customText = "";
+      row.subjectText = "";
       renderTbody();
       savePlan();
     }
@@ -1022,8 +1137,16 @@
       row.detailText = e.target.value;
       savePlan();
     }
+    else if(e.target.classList.contains("subject-text")){
+      row.subjectText = e.target.value;
+      savePlan();
+    }
     else if(e.target.classList.contains("custom-text")){
       row.customText = e.target.value;
+      savePlan();
+    }
+    else if(e.target.classList.contains("due-date-input")){
+      row.dueDate = e.target.value;
       savePlan();
     }
     else if(e.target.classList.contains("note-field")){
@@ -1047,6 +1170,17 @@
         })
         .catch(function(){ /* ignore failed images */ });
     }
+    else if(e.target.classList.contains("task-file-input")){
+      var taskFiles = Array.prototype.slice.call(e.target.files || []);
+      if(taskFiles.length === 0) return;
+      Promise.all(taskFiles.map(readFileAsDataUrl))
+        .then(function(files){
+          row.taskFiles = (row.taskFiles || []).concat(files);
+          renderTbody();
+          savePlan();
+        })
+        .catch(function(){ /* ignore failed files */ });
+    }
   });
 
   document.getElementById("plan-list").addEventListener("input", function(e){
@@ -1055,6 +1189,7 @@
     var i = parseInt(card.dataset.idx, 10);
     var row = planState[i];
     if(e.target.classList.contains("detail-text")){ row.detailText = e.target.value; }
+    else if(e.target.classList.contains("subject-text")){ row.subjectText = e.target.value; }
     else if(e.target.classList.contains("custom-text")){ row.customText = e.target.value; }
     else if(e.target.classList.contains("note-field")){ row.note = e.target.value; }
   });
@@ -1084,6 +1219,13 @@
       var imgIdx = parseInt(e.target.dataset.imgIdx, 10);
       var r = planState[i];
       r.noteImages.splice(imgIdx, 1);
+      renderTbody();
+      savePlan();
+    }
+    else if(e.target.classList.contains("remove-file-btn")){
+      var fileIdx = parseInt(e.target.dataset.fileIdx, 10);
+      var rf = planState[i];
+      rf.taskFiles.splice(fileIdx, 1);
       renderTbody();
       savePlan();
     }
@@ -1166,18 +1308,26 @@
   document.getElementById("open-lang-planner-tile").addEventListener("click", function(){
     openPlanner("lang");
   });
+  document.getElementById("open-weekly-planner-tile").addEventListener("click", function(){
+    openPlanner("weekly");
+  });
   document.getElementById("report-back-btn").addEventListener("click", function(){
     show("screen-planner");
   });
 
   // ---------- report ----------
   function rowDescription(i, row){
-    if(i === 0){ return modeCfg().firstFixed; }
+    if(i === 0 && !modeCfg().noFixedFirst){ return modeCfg().firstFixed; }
     var cfg = modeCfg().config[row.task];
     if(cfg && cfg.kind === "subject"){
       var subj = row.subOption ? ("（"+row.subOption+"）") : "";
       var detail = row.detailText ? "：" + row.detailText : "";
       return row.task + subj + detail;
+    }
+    if(cfg && cfg.kind === "subjectFree"){
+      var subjFree = row.subjectText ? ("（"+row.subjectText+"）") : "";
+      var detailFree = row.detailText ? "：" + row.detailText : "";
+      return row.task + subjFree + detailFree;
     }
     if(cfg && cfg.kind === "custom"){
       return row.customText ? row.customText : row.task;
@@ -1196,9 +1346,17 @@
         minutes: row.minutes,
         done: row.done,
         note: row.note || "",
-        noteImages: row.noteImages || []
+        noteImages: row.noteImages || [],
+        dueDate: row.dueDate || ""
       };
     });
+  }
+
+  function formatDueDate(v){
+    if(!v) return "";
+    var parts = v.split("T");
+    if(parts.length !== 2) return v;
+    return parts[0] + " " + parts[1];
   }
 
   var currentReportText = "";
@@ -1213,6 +1371,7 @@
     lines.push("");
     data.forEach(function(r){
       lines.push(r.num + ". " + r.desc + "　—　" + r.minutes + " 分钟　—　" + (r.done ? "已完成" : "未完成"));
+      if(r.dueDate){ lines.push("　　截止：" + formatDueDate(r.dueDate)); }
       if(r.note){ lines.push("　　备注：" + r.note); }
       if(r.noteImages && r.noteImages.length){ lines.push("　　（附图 " + r.noteImages.length + " 张，长图中可见）"); }
     });
@@ -1240,6 +1399,7 @@
               '<span class="status-badge '+(r.done?'done':'pending')+'">'+(r.done?'已完成':'未完成')+'</span>' +
             '</div>' +
             '<div class="item-meta">'+r.minutes+' 分钟</div>' +
+            (r.dueDate ? '<div class="item-meta">截止：'+escapeHtml(formatDueDate(r.dueDate))+'</div>' : '') +
             (r.note ? '<div class="item-note">备注：'+escapeHtml(r.note)+'</div>' : '') +
             imagesHtml +
           '</div>' +
@@ -1570,6 +1730,9 @@
         '<span class="pr-badge '+(r.done?'done':'pending')+'">'+(r.done?'已完成':'未完成')+'</span>' +
       '</div>';
       html += '<div class="pr-item-meta">'+r.minutes+' 分钟</div>';
+      if(r.dueDate){
+        html += '<div class="pr-item-meta">截止：'+escapeHtml(formatDueDate(r.dueDate))+'</div>';
+      }
       if(r.note){
         html += '<div class="pr-item-note">备注：'+escapeHtml(r.note)+'</div>';
       }
